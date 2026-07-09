@@ -9,7 +9,7 @@
 // that controls each channel independently.
 // ============================================================================
 
-const BGM_URL = 'https://opengameart.org/sites/default/files/determination.mp3';
+const BGM_URL = 'https://corsproxy.io/?https://opengameart.org/sites/default/files/determination.mp3';
 
 let ctx = null;
 let master = null;

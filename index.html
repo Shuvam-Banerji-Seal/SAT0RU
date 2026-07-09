@@ -384,12 +384,14 @@
     const shockwave = new THREE.Mesh(shockGeo, shockMat);
     scene.add(shockwave);
     let shockTime = -1;
+    let domainPulseTimer = -1; // Infinite Void two-hand domain ring pulse
 
     function triggerShockwave(color) {
         shockwave.material.color.set(color);
         shockwave.material.opacity = 0.9;
         shockwave.scale.set(1, 1, 1);
         shockTime = 0;
+        domainPulseTimer = -1; // reset domain timer on tech change
     }
 
     // --- Technique state (driven by the CV module) ---
@@ -504,7 +506,8 @@
             renderer.domElement.style.transform = 'translate(0,0)';
         }
 
-        bloomPass.strength = baseBloom + distanceBoost * 1.5;
+        bloomPass.strength = baseBloom + distanceBoost * 1.5
+            + (currentTech === 'void' && handCount === 2 ? 1.2 : 0);
         const targetZ = 55 - distanceBoost * 12;
         camera.position.z += (targetZ - camera.position.z) * 0.1;
 
@@ -515,6 +518,18 @@
             shockwave.scale.set(s, s, s);
             shockwave.material.opacity = Math.max(0, 0.9 - shockTime * 1.1);
             if (shockwave.material.opacity <= 0) shockTime = -1;
+        }
+
+        // Infinite Void domain pulse — continuous expanding ring when two hands.
+        if (currentTech === 'void' && handCount === 2) {
+            if (domainPulseTimer < 0) domainPulseTimer = 0;
+            domainPulseTimer += dt;
+            if (domainPulseTimer > 0.9) {
+                domainPulseTimer = 0;
+                triggerShockwave('#00ffff');
+            }
+        } else {
+            domainPulseTimer = -1;
         }
 
         const pos = particles.geometry.attributes.position.array;
@@ -544,7 +559,8 @@
         } else if (currentTech === 'blackflash') {
             particles.rotation.z += 0.3;
         } else if (currentTech === 'void') {
-            particles.rotation.y += 0.02;
+            const voidSpeed = handCount === 2 ? 0.06 : 0.02;
+            particles.rotation.y += voidSpeed;
         } else if (currentTech === 'kamehameha') {
             particles.rotation.z += 0.15;
             particles.rotation.y += 0.08;

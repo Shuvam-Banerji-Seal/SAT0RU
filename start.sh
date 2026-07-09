@@ -11,6 +11,15 @@ set -euo pipefail
 PORT="${1:-8000}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Kill any existing process on the requested port.
+if command -v fuser &>/dev/null; then
+    fuser -k "${PORT}/tcp" 2>/dev/null || true
+elif command -v lsof &>/dev/null; then
+    lsof -ti tcp:"$PORT" | xargs kill -9 2>/dev/null || true
+fi
+
+sleep 0.5
+
 # Check for a working HTTP server.
 if command -v python3 &>/dev/null; then
     SERVER="python3 -m http.server"

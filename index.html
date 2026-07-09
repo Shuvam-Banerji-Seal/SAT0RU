@@ -384,14 +384,22 @@
     const shockwave = new THREE.Mesh(shockGeo, shockMat);
     scene.add(shockwave);
     let shockTime = -1;
-    let domainPulseTimer = -1; // Infinite Void two-hand domain ring pulse
+
+    // --- Domain ring (Infinite Void two-hand pulse, independent mesh) ---
+    const domainGeo = new THREE.RingGeometry(0.88, 1.0, 64);
+    const domainMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const domainRing = new THREE.Mesh(domainGeo, domainMat);
+    scene.add(domainRing);
+    let domainPulse = -1;
 
     function triggerShockwave(color) {
         shockwave.material.color.set(color);
         shockwave.material.opacity = 0.9;
         shockwave.scale.set(1, 1, 1);
         shockTime = 0;
-        domainPulseTimer = -1; // reset domain timer on tech change
     }
 
     // --- Technique state (driven by the CV module) ---
@@ -520,16 +528,19 @@
             if (shockwave.material.opacity <= 0) shockTime = -1;
         }
 
-        // Infinite Void domain pulse — continuous expanding ring when two hands.
+        // Infinite Void domain pulse — expanding ring that loops while two hands.
         if (currentTech === 'void' && handCount === 2) {
-            if (domainPulseTimer < 0) domainPulseTimer = 0;
-            domainPulseTimer += dt;
-            if (domainPulseTimer > 0.9) {
-                domainPulseTimer = 0;
-                triggerShockwave('#00ffff');
-            }
+            if (domainPulse < 0) domainPulse = 0;
+            domainPulse += dt;
+            if (domainPulse > 0.9) domainPulse = 0;
+            const t = domainPulse / 0.9;
+            const s = 1 + t * 60;
+            domainRing.scale.set(s, s, s);
+            domainRing.material.opacity = Math.max(0, 1.0 - t);
+            domainRing.material.color.set(0x00ffff);
         } else {
-            domainPulseTimer = -1;
+            domainPulse = -1;
+            domainRing.material.opacity = 0;
         }
 
         const pos = particles.geometry.attributes.position.array;

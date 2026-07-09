@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JJK: Cursed Technique</title>
+    <title>SAT0RU: Cursed Technique Visualizer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Rajdhani', 'Courier New', sans-serif; }
-    
+
         #ui {
             position: absolute;
             top: 8%;
@@ -18,17 +18,17 @@
             pointer-events: none;
             z-index: 10;
         }
-        
-        h1 { 
+
+        h1 {
             font-family: 'Noto Serif JP', serif;
-            font-size: 3.4rem; margin: 0; letter-spacing: 12px; 
-            font-weight: 900; 
+            font-size: 3.4rem; margin: 0; letter-spacing: 12px;
+            font-weight: 900;
             text-shadow: 0 0 24px rgba(255, 255, 255, 0.35);
             background: linear-gradient(to bottom, #ffffff, #7a7a7a);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        
+
         #technique-jp {
             font-family: 'Noto Serif JP', serif;
             font-size: 2.2rem; margin-top: 10px; letter-spacing: 8px;
@@ -36,16 +36,16 @@
             text-shadow: 0 0 18px currentColor;
             transition: color 0.4s ease, text-shadow 0.4s ease;
         }
-        
-        #technique-name { 
+
+        #technique-name {
             font-family: 'Cinzel', serif;
-            font-size: 1.5rem; color: #00ffff; margin-top: 8px; 
+            font-size: 1.5rem; color: #00ffff; margin-top: 8px;
             font-weight: 900; letter-spacing: 5px;
             text-transform: uppercase;
             text-shadow: 0 0 14px currentColor;
             transition: color 0.4s ease, text-shadow 0.4s ease;
         }
-        
+
         #technique-sub {
             font-family: 'Rajdhani', sans-serif;
             font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 6px;
@@ -54,7 +54,6 @@
             transition: opacity 0.4s ease;
         }
 
-        /* Large Centered Camera Hub - Taller for Reel Context */
         #video-container {
             position: absolute;
             bottom: 2%;
@@ -62,10 +61,10 @@
             transform: translateX(-50%) scaleX(-1);
             width: 85vw;
             max-width: 450px;
-            height: 42vh; 
+            height: 42vh;
             border: 2px solid rgba(255, 255, 255, 0.2);
             z-index: 20;
-            background-color: #000; 
+            background-color: #000;
             border-radius: 25px;
             overflow: hidden;
             box-shadow: 0 0 40px rgba(0,0,0,0.9);
@@ -85,8 +84,21 @@
             pointer-events: none; z-index: 4;
             background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.75) 100%);
         }
+
+        #sound-toggle {
+            position: fixed; bottom: 18px; right: 18px; z-index: 30;
+            font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: 2px;
+            color: #fff; background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.3); border-radius: 12px;
+            padding: 10px 16px; cursor: pointer; font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        #sound-toggle.on {
+            color: #000; background: #00ffff; border-color: #00ffff;
+            box-shadow: 0 0 18px rgba(0,255,255,0.6);
+        }
     </style>
-    
+
     <script type="importmap">
         {
             "imports": {
@@ -98,6 +110,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -116,12 +129,15 @@
         <canvas id="output_canvas"></canvas>
     </div>
 
+    <button id="sound-toggle">SOUND: OFF</button>
+
 <script type="module">
     import * as THREE from 'three';
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { setupCV } from './cv.js';
+    import * as audio from './audio.js';
 
     // --- Scene & Rendering ---
     const scene = new THREE.Scene();
@@ -143,28 +159,55 @@
     const positions = new Float32Array(COUNT * 3);
     const colors = new Float32Array(COUNT * 3);
     const sizes = new Float32Array(COUNT);
-    
+
     const targetPositions = new Float32Array(COUNT * 3);
     const targetColors = new Float32Array(COUNT * 3);
     const targetSizes = new Float32Array(COUNT);
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-    const particles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.3, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    // Round, glowing "sphere" particles via a custom shader (per-particle size + soft circular alpha).
+    const particleMaterial = new THREE.ShaderMaterial({
+        vertexShader: `
+            attribute vec3 aColor;
+            attribute float size;
+            varying vec3 vColor;
+            void main() {
+                vColor = aColor;
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (320.0 / -mv.z);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            void main() {
+                float d = length(gl_PointCoord - vec2(0.5));
+                if (d > 0.5) discard;
+                float a = smoothstep(0.5, 0.08, d);
+                gl_FragColor = vec4(vColor, a);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+    });
+
+    const particles = new THREE.Points(geometry, particleMaterial);
     scene.add(particles);
 
-    // Technique Functions 
+    // --- Technique particle generators ---
     function getRed(i) {
-        if(i < COUNT * 0.1) {
+        if (i < COUNT * 0.1) {
             const r = Math.random() * 9;
             const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
             return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 3, g: 0.1, b: 0.1, s: 2.5 };
         } else {
-            const armCount = 3; const t = (i / COUNT); 
+            const armCount = 3; const t = (i / COUNT);
             const angle = t * 15 + ((i % armCount) * (Math.PI * 2 / armCount));
-            const radius = 2 + (t * 40); 
+            const radius = 2 + (t * 40);
             return { x: radius * Math.cos(angle), y: radius * Math.sin(angle), z: (Math.random() - 0.5) * (10 * t), r: 0.8, g: 0, b: 0, s: 1.0 };
         }
     }
@@ -195,9 +238,9 @@
             return { x: px+(Math.random()-0.5)*2, y: -15+Math.random()*30, z: pz+(Math.random()-0.5)*2, r: 0.2, g: 0.2, b: 0.2, s: 0.6 };
         } else if (i < total * 0.6) {
             const t = Math.random() * Math.PI * 2; const rad = Math.random() * 30;
-            const curve = Math.pow(rad/30, 2) * 10; 
+            const curve = Math.pow(rad/30, 2) * 10;
             return { x: rad*Math.cos(t), y: 15 - curve + (Math.random()*2), z: rad*Math.sin(t)*0.6, r: 0.6, g: 0, b: 0, s: 0.6 };
-        }         else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
+        } else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
     }
 
     function getBlue(i) {
@@ -224,19 +267,44 @@
         }
     }
 
-    // --- Technique state (driven by the CV module) ---
-    let currentTech = 'neutral';
-    let shakeIntensity = 0;
-    let glowColor = '#00ffff';
+    // Forward energy column (toward the camera) for Kamehameha.
+    function getKamehameha(i) {
+        const t = i / COUNT;
+        const angle = Math.random() * 6.28;
+        const rad = Math.random() * 9 * (1 - t * 0.25);
+        const z = 12 + Math.random() * 42;
+        const flicker = 0.4 + Math.random() * 0.5;
+        return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: z, r: flicker, g: 0.85, b: 1.0, s: 1.2 + Math.random() };
+    }
 
+    // Converging golden spirals for Fusion.
+    function getFusion(i) {
+        const t = i / COUNT;
+        const angle = t * 30 + (i % 2) * Math.PI;
+        const radius = 2 + t * 30;
+        return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) * 0.6, z: (Math.random() - 0.5) * 6, r: 1.0, g: 0.6, b: 0.1, s: 1.0 };
+    }
+
+    // Concentric violet rings radiating outward for Cursed Speech.
+    function getCursedSpeech(i) {
+        const t = i / COUNT;
+        const ring = ((i % 24) / 24) * 6.28;
+        const rad = 5 + t * 42;
+        return { x: rad * Math.cos(ring), y: rad * Math.sin(ring), z: (Math.random() - 0.5) * 3, r: 0.7, g: 0.3, b: 1.0, s: 0.9 };
+    }
+
+    // --- Technique metadata (UI text, bloom, spoken incantation) ---
     const TECH_INFO = {
-        neutral:    { name: 'Neutral State',                  jp: '呪力',     sub: 'Raise a hand to channel your technique',            bloom: 1.0 },
-        red:        { name: 'Cursed Technique Reversal: Red',  jp: '赫',       sub: 'A blast of repulsive force',                        bloom: 2.5 },
-        blue:       { name: 'Cursed Technique: Blue',          jp: '蒼',       sub: 'Gravity drawn to a single point',                  bloom: 2.2 },
-        void:       { name: 'Domain Expansion: Infinite Void', jp: '無量空処', sub: 'All knowledge, frozen in time',                    bloom: 2.0 },
-        purple:     { name: 'Secret Technique: Hollow Purple', jp: '虚式「茈」', sub: 'The fusion of red and blue',                      bloom: 4.0 },
-        shrine:     { name: 'Domain Expansion: Malevolent Shrine', jp: '伏魔御廚子', sub: 'A boundless kitchen of slaughters',            bloom: 2.5 },
-        blackflash: { name: 'Black Flash',                     jp: '黒閃',     sub: 'A distortion of space and time',                    bloom: 3.6 },
+        neutral:        { name: 'Neutral State',                   jp: '呪力',      sub: 'Raise a hand to channel your technique',          bloom: 1.0, speak: '' },
+        red:            { name: 'Cursed Technique Reversal: Red',   jp: '赫',        sub: 'A blast of repulsive force',                       bloom: 2.5, speak: 'Red' },
+        blue:           { name: 'Cursed Technique: Blue',           jp: '蒼',        sub: 'Gravity drawn to a single point',                 bloom: 2.2, speak: 'Blue' },
+        void:           { name: 'Domain Expansion: Infinite Void',  jp: '無量空処',  sub: 'All knowledge, frozen in time',                   bloom: 2.0, speak: 'Infinite Void' },
+        purple:         { name: 'Secret Technique: Hollow Purple',  jp: '虚式「茈」', sub: 'The fusion of red and blue',                     bloom: 4.0, speak: 'Hollow Purple' },
+        shrine:         { name: 'Domain Expansion: Malevolent Shrine', jp: '伏魔御廚子', sub: 'A boundless kitchen of slaughters',             bloom: 2.5, speak: 'Malevolent Shrine' },
+        blackflash:     { name: 'Black Flash',                      jp: '黒閃',      sub: 'A distortion of space and time',                   bloom: 3.6, speak: 'Black Flash' },
+        kamehameha:     { name: 'Kamehameha',                       jp: '波',        sub: 'Two palms unite into a torrent of light',          bloom: 3.8, speak: 'Kamehameha' },
+        fusion:         { name: 'Convergence: Fusion',             jp: '合',        sub: 'Two forces merged into one',                       bloom: 3.2, speak: 'Fusion' },
+        cursed_speech:  { name: 'Cursed Speech',                    jp: '呪言',      sub: 'Words become command',                             bloom: 2.8, speak: 'Stop' },
     };
 
     // --- Shockwave ring (triggered on every technique activation) ---
@@ -256,6 +324,14 @@
         shockTime = 0;
     }
 
+    // --- Technique state (driven by the CV module) ---
+    let currentTech = 'neutral';
+    let shakeIntensity = 0;
+    let glowColor = '#00ffff';
+    let baseBloom = 1.0;
+    let handCount = 0;
+    let distanceBoost = 0;
+
     function updateState(tech, glow) {
         if (currentTech === tech) return;
         currentTech = tech;
@@ -272,9 +348,12 @@
         jpEl.style.color = glow;
         subEl.innerText = info.sub;
 
-        shakeIntensity = tech !== 'neutral' ? (tech === 'blackflash' ? 0.9 : 0.4) : 0;
-        bloomPass.strength = info.bloom;
+        shakeIntensity = tech !== 'neutral' ? (tech === 'blackflash' || tech === 'kamehameha' ? 0.9 : 0.4) : 0;
+        baseBloom = info.bloom;
         triggerShockwave(glow);
+
+        audio.playCast(tech);
+        if (info.speak) audio.speak(info.speak);
 
         for (let i = 0; i < COUNT; i++) {
             let p;
@@ -290,6 +369,9 @@
             else if (tech === 'purple') p = getPurple(i);
             else if (tech === 'shrine') p = getShrine(i);
             else if (tech === 'blackflash') p = getBlackFlash(i);
+            else if (tech === 'kamehameha') p = getKamehameha(i);
+            else if (tech === 'fusion') p = getFusion(i);
+            else if (tech === 'cursed_speech') p = getCursedSpeech(i);
 
             targetPositions[i*3] = p.x; targetPositions[i*3+1] = p.y; targetPositions[i*3+2] = p.z;
             targetColors[i*3] = p.r; targetColors[i*3+1] = p.g; targetColors[i*3+2] = p.b;
@@ -297,8 +379,27 @@
         }
     }
 
-    // Start the computer-vision hand-tracking pipeline (see cv.js).
-    setupCV(updateState);
+    function onMetrics({ hands, distance }) {
+        handCount = hands;
+        if (hands === 2) {
+            // distance: ~0.15 (palms touching) .. ~0.8 (arms outstretched)
+            distanceBoost = Math.min(1, Math.max(0, (distance - 0.15) / 0.6));
+        } else {
+            distanceBoost = 0;
+        }
+    }
+
+    // Start the computer-vision pipeline (see cv.js).
+    setupCV({ onTechnique: updateState, onMetrics });
+
+    // --- Sound toggle ---
+    const soundBtn = document.getElementById('sound-toggle');
+    soundBtn.addEventListener('click', () => {
+        const on = !audio.isAudioEnabled();
+        audio.setAudioEnabled(on);
+        soundBtn.textContent = on ? 'SOUND: ON' : 'SOUND: OFF';
+        soundBtn.classList.toggle('on', on);
+    });
 
     // Animation
     const clock = new THREE.Clock();
@@ -307,11 +408,17 @@
         requestAnimationFrame(animate);
         const dt = Math.min(clock.getDelta(), 0.05);
 
-        if (shakeIntensity > 0) {
-            renderer.domElement.style.transform = `translate(${(Math.random()-0.5)*shakeIntensity*40}px, ${(Math.random()-0.5)*shakeIntensity*40}px)`;
+        // Distance-driven "screen" effects with two hands.
+        const shake = Math.max(shakeIntensity, handCount === 2 ? 0.3 + distanceBoost * 0.5 : 0);
+        if (shake > 0) {
+            renderer.domElement.style.transform = `translate(${(Math.random()-0.5)*shake*40}px, ${(Math.random()-0.5)*shake*40}px)`;
         } else {
             renderer.domElement.style.transform = 'translate(0,0)';
         }
+
+        bloomPass.strength = baseBloom + distanceBoost * 1.5;
+        const targetZ = 55 - distanceBoost * 12;
+        camera.position.z += (targetZ - camera.position.z) * 0.1;
 
         // Shockwave expansion
         if (shockTime >= 0) {
@@ -323,7 +430,7 @@
         }
 
         const pos = particles.geometry.attributes.position.array;
-        const col = particles.geometry.attributes.color.array;
+        const col = particles.geometry.attributes.aColor.array;
         const siz = particles.geometry.attributes.size.array;
 
         // Framerate-independent easing (≈0.1 per frame at 60fps).
@@ -335,7 +442,7 @@
         for (let i = 0; i < COUNT; i++) siz[i] += (targetSizes[i] - siz[i]) * ease;
 
         particles.geometry.attributes.position.needsUpdate = true;
-        particles.geometry.attributes.color.needsUpdate = true;
+        particles.geometry.attributes.aColor.needsUpdate = true;
         particles.geometry.attributes.size.needsUpdate = true;
 
         if (currentTech === 'red') {
@@ -350,6 +457,12 @@
             particles.rotation.z += 0.3;
         } else if (currentTech === 'void') {
             particles.rotation.y += 0.02;
+        } else if (currentTech === 'kamehameha') {
+            particles.rotation.y += 0.05;
+        } else if (currentTech === 'fusion') {
+            particles.rotation.z += 0.25;
+        } else if (currentTech === 'cursed_speech') {
+            particles.rotation.y += 0.12;
         } else if (currentTech === 'shrine') {
             particles.rotation.set(0, 0, 0);
         } else {

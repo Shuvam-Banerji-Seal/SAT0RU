@@ -1,40 +1,95 @@
-## Description
-SAT0RU is a cursed technique visualizer based on the popular anime series, Jujutsu Kaisen 呪術廻戦. It combines the mediapipe library with three.js to recreate cursed techniques from Jujutsu Kaisen. Powered by Gemini 3.
+# SAT0RU — Cursed Technique Visualizer
 
-![Demo GIF](https://github.com/user-attachments/assets/8ad2b871-02c0-4b97-95f3-34682e745be0)
+SAT0RU is an interactive, webcam-driven **cursed technique visualizer** inspired by *Jujutsu Kaisen* (呪術廻戦). It reads your hand (and face) gestures through the camera and renders voluminous, bloom-lit particle techniques in real time with **three.js**.
 
-## Features
+> Raise your hands, form the signs, and watch cursed energy erupt on screen.
 
-This project utilizes particles to render volume-based cursed techniques:
+---
 
-* **Secret Technique: Hollow Purple**
-    * **Visuals:** A chaotic singularity combining attraction and repulsion.
-    * **Trigger:** "Pinch" gesture (Thumb + Index touching).
-* **Domain Expansion: Infinite Void**
-    * **Visuals:** A multi-layered celestial domain featuring a bright event horizon ring, a vertical stream of infinite information, and a deep cosmos background.
-    * **Trigger:** "Cross" gesture (Index + Middle fingers crossed).
-* **Cursed Technique Reversal: Red**
-    * **Visuals:** A blinding white-hot core generating a violent, jagged sphere of repulsive force.
-    * **Trigger:** Index finger pointing up.
-* **Domain Expansion: Malevolent Shrine**
-    * **Visuals:** A dark, ominous aura representing the King of Curses.
-    * **Trigger:** Flat hand / Prayer gesture.
+## What's New in This Build
+
+This iteration expands the original visualizer into a richer, multi-modal experience:
+
+- **Sphere particles** — particles are now rendered as soft, round glowing orbs (custom GLSL point shader with per-particle size + circular alpha) instead of flat squares.
+- **Two new single-hand techniques** — **Blue (蒼)** and **Black Flash (黒閃)**, each with its own gesture, color palette, bloom profile, and motion.
+- **Two-hand composite techniques** — when **two hands** are visible the system detects combined poses:
+  - **Kamehameha (波)** — both palms open and brought together.
+  - **Fusion / Convergence (合)** — both fists (or both pinches) brought together.
+  - **Distance-driven "screen" effects** — the separation between your two hands modulates bloom intensity, camera push-in, and screen shake in real time (hands apart = bigger, more violent effect).
+- **Face-driven technique** — optional **MediaPipe FaceMesh** detects an open mouth and triggers **Cursed Speech (呪言)**, a radiating violet incantation.
+- **Procedural audio + spoken incantations** — a local **Web Audio** engine synthesizes a cast sound per technique, and the **Web Speech API** speaks the technique name aloud. Sound is **off by default** and toggled with an on-screen button.
+- **Richer UI** — Japanese technique glyphs, color-synced titles, descriptive subtitles, custom fonts, a vignette, and a shockwave ring on every activation.
+- **Smoother animation** — framerate-independent easing and per-technique rotation/spin behavior.
+
+---
+
+## Techniques & Gestures
+
+### Single Hand
+| Technique | Japanese | Gesture |
+|-----------|----------|---------|
+| Reverse Cursed Technique: **Red** | 赫 | Index finger pointing up |
+| Cursed Technique: **Blue** | 蒼 | "Gun" — thumb + index extended, other fingers down |
+| Domain Expansion: **Infinite Void** | 無量空処 | Index + middle crossed (peace-sign cross) |
+| Secret Technique: **Hollow Purple** | 虚式「茈」 | Pinch — thumb + index touching |
+| Domain Expansion: **Malevolent Shrine** | 伏魔御廚子 | Open hand / all fingers up |
+| **Black Flash** | 黒閃 | Closed fist |
+
+### Two Hands (Composite)
+| Technique | Japanese | Gesture |
+|-----------|----------|---------|
+| **Kamehameha** | 波 | Both palms open, brought together |
+| **Fusion / Convergence** | 合 | Both fists (or both pinches) brought together |
+
+> With two hands on screen, the **distance between them** scales the bloom, camera dolly, and shake — push your hands apart for a bigger blast.
+
+### Face
+| Technique | Japanese | Trigger |
+|-----------|----------|---------|
+| **Cursed Speech** | 呪言 | Open mouth (detected via FaceMesh) |
+
+---
+
+## How It Works
+
+```
+webcam ──► MediaPipe (Hands + optional FaceMesh)
+               │  classify poses → technique + glow + metrics
+               ▼
+            cv.js  ──(onTechnique / onMetrics)──►  index.html (three.js scene)
+               │                                        │
+               └── audio.js ◄── playCast() / speak() ───┘
+```
+
+- **`cv.js`** — owns the camera feed and the MediaPipe pipelines. It classifies each hand into a technique, aggregates two hands into composite techniques, and (optionally) fuses face detection. It reports `onTechnique(tech, glow)` on changes and `onMetrics({hands, distance})` every frame.
+- **`index.html`** — the three.js renderer. Particle generators (`getRed`, `getBlue`, `getVoid`, `getPurple`, `getShrine`, `getBlackFlash`, `getKamehameha`, `getFusion`, `getCursedSpeech`) feed target positions/colors/sizes; a custom shader draws them as glowing spheres; bloom + shockwave + camera effects respond to the active technique and hand metrics.
+- **`audio.js`** — a self-contained sound engine. No external audio files: cast sounds are synthesized with oscillators/noise, and incantations are spoken with the browser's speech synthesis. Everything is gated behind the **SOUND** toggle.
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-You need a modern web browser (Chrome, Edge, Firefox) and a webcam.
+- A modern browser (Chrome, Edge, or Firefox).
+- A webcam.
+- (Optional) A microphone is **not** required — speech is *output* only.
 
-### Installation
-1.  **Clone the repo**
-    ```bash
-    git clone [https://github.com/reinesana/SAT0RU.git](https://github.com/reinesana/SAT0RU.git)
-    cd SAT0RU
-    ```
+### Run
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/Shuvam-Banerji-Seal/SAT0RU.git
+   cd SAT0RU
+   ```
+2. Serve the folder over HTTP (webcam + ES modules require it):
+   - **VS Code:** install the *Live Server* extension, right-click `index.html`, and choose **Open with Live Server**.
+   - **Or** from the terminal: `python3 -m http.server 8000`, then open `http://localhost:8000`.
+3. Allow camera access and start forming signs.
+4. Click **SOUND: OFF** (bottom-right) to enable audio + spoken incantations.
 
-2.  **Run the project**
-    **VS Code:** Install the "Live Server" extension, right-click `index.html`, and select "Open with Live Server".
+---
 
-## Note 
-
-This project was built and powered by **Google Gemini 3**.
+## Roadmap
+- More two-hand integration signs (e.g. circular "binding" seals).
+- True 3D instanced-sphere particles as an alternative to shader points.
+- Tunable gesture sensitivity / calibration UI.
+- Additional face expressions (eyes closed, smile) as technique triggers.

@@ -98,8 +98,6 @@ function classifyTwoHands(a, b, dist) {
     const pinches = ca === 'purple' && cb === 'purple';
 
     // Kamehameha: two hands pressed together (palms touching).
-    // Detect by wrist proximity + fingertip proximity — no finger "up" check
-    // needed, so it works even when overlapping palms hide individual fingers.
     const wristDist = Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y);
     const tipIds = [8, 12, 16, 20];
     let tipAvg = 0;
@@ -111,6 +109,10 @@ function classifyTwoHands(a, b, dist) {
 
     // Fusion: both fists or both pinches close together.
     if (dist < 0.32 && (fists || pinches)) return 'fusion';
+
+    // Preserve void (Infinite Void) when either hand shows it — the two-hand
+    // domain effects (pulse ring, boosted bloom, speed) should still activate.
+    if (ca === 'void' || cb === 'void') return 'void';
 
     let best = 'neutral';
     [ca, cb].forEach((t) => {

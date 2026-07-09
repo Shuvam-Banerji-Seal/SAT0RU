@@ -1,16 +1,26 @@
 // ============================================================================
 // SAT0RU - Audio module
 // ----------------------------------------------------------------------------
-// Procedural sound effects (Web Audio API) + spoken technique names
-// (Web Speech API). All sound is generated locally -- no external assets --
-// and is gated behind an enable toggle so the experience is silent by default.
+// Two independent audio channels:
+//   * BGM  — looping background music (HTMLAudioElement)
+//   * SFX  — procedural cast sounds + TTS (Web Audio API)
+//
+// Both are gated behind their own toggles. The SOUND button opens a popup
+// that controls each channel independently.
 // ============================================================================
+
+const BGM_URL = 'https://opengameart.org/sites/default/files/determination.mp3';
 
 let ctx = null;
 let master = null;
-let enabled = false;
+let sfxEnabled = false;
+let bgmEnabled = false;
+let bgmElement = null;
+let bgmGain = null; // GainNode for smooth fade (connected to ctx.destination)
 
-export function initAudio() {
+// --- Web Audio (SFX) -----------------------------------------------
+
+function initAudioContext() {
     if (ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -18,23 +28,87 @@ export function initAudio() {
     master = ctx.createGain();
     master.gain.value = 0.45;
     master.connect(ctx.destination);
+    // BGM gain node (separate from SFX master)
+    bgmGain = ctx.createGain();
+    bgmGain.gain.value = 0;
+    bgmGain.connect(ctx.destination);
 }
 
-export function setAudioEnabled(value) {
-    enabled = value;
-    if (enabled) {
-        initAudio();
+export function setSfxEnabled(value) {
+    sfxEnabled = value;
+    if (sfxEnabled) {
+        initAudioContext();
         if (ctx && ctx.state === 'suspended') ctx.resume();
     }
 }
 
-export function isAudioEnabled() {
-    return enabled;
+export function isSfxEnabled() {
+    return sfxEnabled;
 }
 
-// Speak a phrase aloud (used for technique incantations).
+// --- Background Music -----------------------------------------------
+
+export function setBgmEnabled(value) {
+    bgmEnabled = value;
+    if (bgmEnabled) {
+        initAudioContext();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+        startBgm();
+    } else {
+        fadeBgm(0);
+    }
+}
+
+export function isBgmEnabled() {
+    return bgmEnabled;
+}
+
+function startBgm() {
+    if (!bgmElement) {
+        bgmElement = new Audio(BGM_URL);
+        bgmElement.crossOrigin = 'anonymous';
+        bgmElement.loop = true;
+        bgmElement.preload = 'auto';
+    }
+    if (ctx && bgmGain) {
+        // Route through Web Audio for smooth fade.
+        // If the audio element is already playing, just fade in.
+        if (!bgmElement._connected && bgmElement.readyState >= 2) {
+            try {
+                const src = ctx.createMediaElementSource(bgmElement);
+                src.connect(bgmGain);
+                bgmElement._connected = true;
+            } catch (e) { /* already connected */ }
+        }
+        bgmElement.play().catch(() => {});
+        fadeBgm(0.3);
+    } else {
+        // Fallback: use element volume directly (no Web Audio).
+        bgmElement.volume = 0.3;
+        bgmElement.play().catch(() => {});
+    }
+}
+
+function fadeBgm(target) {
+    if (!bgmElement) return;
+    if (ctx && bgmGain) {
+        const now = ctx.currentTime;
+        bgmGain.gain.cancelScheduledValues(now);
+        bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
+        bgmGain.gain.linearRampToValueAtTime(target, now + 0.8);
+        if (target === 0) {
+            bgmElement.pause();
+        }
+    } else {
+        bgmElement.volume = target;
+        if (target === 0) bgmElement.pause();
+    }
+}
+
+// --- TTS (spoken incantations) --------------------------------------
+
 export function speak(text) {
-    if (!enabled || !('speechSynthesis' in window) || !text) return;
+    if (!sfxEnabled || !('speechSynthesis' in window) || !text) return;
     try {
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
@@ -45,9 +119,10 @@ export function speak(text) {
     } catch (e) { /* speech unsupported */ }
 }
 
-// Single oscillator with envelope.
+// --- SFX primitives -------------------------------------------------
+
 function tone({ freq = 220, type = 'sine', dur = 0.4, gain = 0.3, sweepTo = null, delay = 0 }) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -63,9 +138,8 @@ function tone({ freq = 220, type = 'sine', dur = 0.4, gain = 0.3, sweepTo = null
     osc.stop(t0 + dur + 0.05);
 }
 
-// Layered oscillators for richer, thicker sounds.
 function layer({ freq = 220, types = ['sine', 'triangle'], detune = 5, dur = 0.5, gain = 0.2, sweepTo = null, delay = 0 }) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     const t0 = ctx.currentTime + delay;
     for (let i = 0; i < types.length; i++) {
         const osc = ctx.createOscillator();
@@ -84,9 +158,8 @@ function layer({ freq = 220, types = ['sine', 'triangle'], detune = 5, dur = 0.5
     }
 }
 
-// Shaped noise burst.
 function noiseBurst({ dur = 0.3, gain = 0.3, delay = 0, lowpass = 800, highpass = 0 }) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     const t0 = ctx.currentTime + delay;
     const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -114,9 +187,8 @@ function noiseBurst({ dur = 0.3, gain = 0.3, delay = 0, lowpass = 800, highpass 
     src.start(t0);
 }
 
-// Deep sub-bass thump.
 function subBass({ freq = 50, dur = 0.3, gain = 0.35, delay = 0 }) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -132,9 +204,8 @@ function subBass({ freq = 50, dur = 0.3, gain = 0.35, delay = 0 }) {
     osc.stop(t0 + dur + 0.05);
 }
 
-// Rising whine (charge-up sound).
 function chargeWhine({ startFreq = 200, endFreq = 2000, dur = 0.8, gain = 0.15, delay = 0 }) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -155,9 +226,10 @@ function chargeWhine({ startFreq = 200, endFreq = 2000, dur = 0.8, gain = 0.15, 
     osc.stop(t0 + dur + 0.05);
 }
 
-// Play a cast sound tailored to each technique.
+// --- Cast sounds per technique --------------------------------------
+
 export function playCast(tech) {
-    if (!enabled || !ctx) return;
+    if (!sfxEnabled || !ctx) return;
     switch (tech) {
         case 'kamehameha':
             chargeWhine({ startFreq: 150, endFreq: 1800, dur: 1.2, gain: 0.18 });

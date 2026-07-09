@@ -87,7 +87,7 @@
         }
 
         #sound-toggle {
-            position: fixed; bottom: 18px; right: 18px; z-index: 30;
+            position: fixed; bottom: 18px; right: 18px; z-index: 32;
             font-family: 'Barlow', sans-serif; font-weight: 700; letter-spacing: 2px;
             color: #fff; background: rgba(0,0,0,0.5);
             border: 1px solid rgba(255,255,255,0.3); border-radius: 12px;
@@ -97,6 +97,54 @@
         #sound-toggle.on {
             color: #000; background: #00ffff; border-color: #00ffff;
             box-shadow: 0 0 18px rgba(0,255,255,0.6);
+        }
+
+        #audio-popup {
+            position: fixed; bottom: 60px; right: 18px; z-index: 31;
+            background: rgba(10,10,10,0.92); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 14px; padding: 16px 20px; min-width: 180px;
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            display: none; /* hidden by default */
+            font-family: 'Barlow', sans-serif;
+        }
+        #audio-popup.visible { display: block; }
+
+        #audio-popup h3 {
+            margin: 0 0 12px 0; font-size: 0.75rem; letter-spacing: 3px;
+            color: rgba(255,255,255,0.5); text-transform: uppercase; font-weight: 600;
+        }
+
+        .audio-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 0;
+        }
+        .audio-row + .audio-row { border-top: 1px solid rgba(255,255,255,0.08); }
+        .audio-label {
+            font-size: 0.85rem; font-weight: 600; letter-spacing: 1px;
+            color: rgba(255,255,255,0.8);
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative; width: 40px; height: 22px; cursor: pointer;
+        }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle .slider {
+            position: absolute; inset: 0; border-radius: 22px;
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+        .toggle .slider::before {
+            content: ''; position: absolute; left: 3px; top: 3px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: rgba(255,255,255,0.6); transition: all 0.3s ease;
+        }
+        .toggle input:checked + .slider {
+            background: #00ffff; border-color: #00ffff;
+            box-shadow: 0 0 10px rgba(0,255,255,0.4);
+        }
+        .toggle input:checked + .slider::before {
+            transform: translateX(18px); background: #000;
         }
     </style>
 
@@ -126,7 +174,25 @@
         <canvas id="output_canvas"></canvas>
     </div>
 
-    <button id="sound-toggle">SOUND: OFF</button>
+    <button id="sound-toggle">SOUND</button>
+
+    <div id="audio-popup">
+        <h3>Audio</h3>
+        <div class="audio-row">
+            <span class="audio-label">BGM</span>
+            <label class="toggle">
+                <input type="checkbox" id="bgm-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="audio-row">
+            <span class="audio-label">SFX</span>
+            <label class="toggle">
+                <input type="checkbox" id="sfx-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
 
 <script type="module">
     import * as THREE from 'three';
@@ -389,13 +455,33 @@
     // Start the computer-vision pipeline (see cv.js).
     setupCV({ onTechnique: updateState, onMetrics });
 
-    // --- Sound toggle ---
+    // --- Sound controls ---
     const soundBtn = document.getElementById('sound-toggle');
-    soundBtn.addEventListener('click', () => {
-        const on = !audio.isAudioEnabled();
-        audio.setAudioEnabled(on);
-        soundBtn.textContent = on ? 'SOUND: ON' : 'SOUND: OFF';
-        soundBtn.classList.toggle('on', on);
+    const audioPopup = document.getElementById('audio-popup');
+    const bgmCheckbox = document.getElementById('bgm-toggle');
+    const sfxCheckbox = document.getElementById('sfx-toggle');
+
+    // Toggle popup visibility on button click.
+    soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        audioPopup.classList.toggle('visible');
+    });
+
+    // Close popup when clicking outside.
+    document.addEventListener('click', (e) => {
+        if (!audioPopup.contains(e.target) && e.target !== soundBtn) {
+            audioPopup.classList.remove('visible');
+        }
+    });
+
+    // BGM toggle.
+    bgmCheckbox.addEventListener('change', () => {
+        audio.setBgmEnabled(bgmCheckbox.checked);
+    });
+
+    // SFX toggle.
+    sfxCheckbox.addEventListener('change', () => {
+        audio.setSfxEnabled(sfxCheckbox.checked);
     });
 
     // Animation

@@ -93,22 +93,21 @@ function classifyHand(lm) {
 function classifyTwoHands(a, b, dist) {
     const ca = classifyHand(a);
     const cb = classifyHand(b);
-    const openHands = ca === 'shrine' && cb === 'shrine';
-    const fists     = ca === 'blackflash' && cb === 'blackflash';
-    const pinches   = ca === 'purple' && cb === 'purple';
 
-    // Kamehameha: both palms pressed together with opposite fingers.
-    // Check wrist proximity (lm[0]) AND fingertip proximity (lm[8,12,16,20]).
-    if (openHands) {
-        const wristDist = Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y);
-        const tipIds = [8, 12, 16, 20];
-        let tipAvg = 0;
-        for (const id of tipIds) {
-            tipAvg += Math.hypot(a[id].x - b[id].x, a[id].y - b[id].y);
-        }
-        tipAvg /= tipIds.length;
-        if (wristDist < 0.15 && tipAvg < 0.15) return 'kamehameha';
+    const fists   = ca === 'blackflash' && cb === 'blackflash';
+    const pinches = ca === 'purple' && cb === 'purple';
+
+    // Kamehameha: two hands pressed together (palms touching).
+    // Detect by wrist proximity + fingertip proximity — no finger "up" check
+    // needed, so it works even when overlapping palms hide individual fingers.
+    const wristDist = Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y);
+    const tipIds = [8, 12, 16, 20];
+    let tipAvg = 0;
+    for (const id of tipIds) {
+        tipAvg += Math.hypot(a[id].x - b[id].x, a[id].y - b[id].y);
     }
+    tipAvg /= tipIds.length;
+    if (wristDist < 0.2 && tipAvg < 0.2) return 'kamehameha';
 
     // Fusion: both fists or both pinches close together.
     if (dist < 0.32 && (fists || pinches)) return 'fusion';

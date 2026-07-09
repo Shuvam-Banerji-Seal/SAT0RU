@@ -2,23 +2,21 @@
 // SAT0RU - Audio module
 // ----------------------------------------------------------------------------
 // Two independent audio channels:
-//   * BGM  — looping background music (HTMLAudioElement)
+//   * BGM  — procedural background music (Web Audio oscillators + noise)
 //   * SFX  — procedural cast sounds + TTS (Web Audio API)
 //
 // Both are gated behind their own toggles. The SOUND button opens a popup
 // that controls each channel independently.
 // ============================================================================
 
-const BGM_URL = 'https://corsproxy.io/?https://opengameart.org/sites/default/files/determination.mp3';
-
 let ctx = null;
 let master = null;
 let sfxEnabled = false;
 let bgmEnabled = false;
-let bgmElement = null;
-let bgmGain = null; // GainNode for smooth fade (connected to ctx.destination)
+let bgmNodes = []; // active BGM oscillators/noise sources
+let bgmInterval = null;
 
-// --- Web Audio (SFX) -----------------------------------------------
+// --- Web Audio context ----------------------------------------------
 
 function initAudioContext() {
     if (ctx) return;
@@ -28,34 +26,33 @@ function initAudioContext() {
     master = ctx.createGain();
     master.gain.value = 0.45;
     master.connect(ctx.destination);
-    // BGM gain node (separate from SFX master)
-    bgmGain = ctx.createGain();
-    bgmGain.gain.value = 0;
-    bgmGain.connect(ctx.destination);
 }
+
+function ensureCtx() {
+    if (!ctx) initAudioContext();
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+}
+
+// --- SFX channel ----------------------------------------------------
 
 export function setSfxEnabled(value) {
     sfxEnabled = value;
-    if (sfxEnabled) {
-        initAudioContext();
-        if (ctx && ctx.state === 'suspended') ctx.resume();
-    }
+    if (sfxEnabled) ensureCtx();
 }
 
 export function isSfxEnabled() {
     return sfxEnabled;
 }
 
-// --- Background Music -----------------------------------------------
+// --- BGM channel (procedural) --------------------------------------
 
 export function setBgmEnabled(value) {
     bgmEnabled = value;
     if (bgmEnabled) {
-        initAudioContext();
-        if (ctx && ctx.state === 'suspended') ctx.resume();
+        ensureCtx();
         startBgm();
     } else {
-        fadeBgm(0);
+        stopBgm();
     }
 }
 
@@ -63,45 +60,128 @@ export function isBgmEnabled() {
     return bgmEnabled;
 }
 
+// Energetic procedural background music loop.
+// Layers: bass drone + rhythmic pulse + hi-hat noise + arpeggio melody.
 function startBgm() {
-    if (!bgmElement) {
-        bgmElement = new Audio(BGM_URL);
-        bgmElement.crossOrigin = 'anonymous';
-        bgmElement.loop = true;
-        bgmElement.preload = 'auto';
+    if (!ctx) return;
+    stopBgm(); // clear any existing
+
+    const now = ctx.currentTime;
+
+    // Master BGM gain (for fade).
+    const bgmGain = ctx.createGain();
+    bgmGain.gain.setValueAtTime(0, now);
+    bgmGain.gain.linearRampToValueAtTime(0.35, now + 1.5);
+    bgmGain.connect(ctx.destination);
+
+    // --- Layer 1: Bass drone (deep sine) ---
+    const bass = ctx.createOscillator();
+    bass.type = 'sine';
+    bass.frequency.value = 55; // A1
+    const bassGain = ctx.createGain();
+    bassGain.gain.value = 0.25;
+    bass.connect(bassGain);
+    bassGain.connect(bgmGain);
+    bass.start(now);
+    bgmNodes.push(bass, bassGain);
+
+    // --- Layer 2: Rhythmic pulse (square wave, 130 BPM) ---
+    const pulse = ctx.createOscillator();
+    pulse.type = 'square';
+    pulse.frequency.value = 110;
+    const pulseGain = ctx.createGain();
+    pulseGain.gain.value = 0.08;
+    const pulseLfo = ctx.createOscillator();
+    pulseLfo.type = 'sine';
+    pulseLfo.frequency.value = 130 / 60; // 130 BPM = 2.167 Hz
+    const pulseLfoGain = ctx.createGain();
+    pulseLfoGain.gain.value = 0.08;
+    pulseLfo.connect(pulseLfoGain);
+    pulseLfoGain.connect(pulseGain.gain);
+    pulse.connect(pulseGain);
+    pulseGain.connect(bgmGain);
+    pulse.start(now);
+    pulseLfo.start(now);
+    bgmNodes.push(pulse, pulseGain, pulseLfo, pulseLfoGain);
+
+    // --- Layer 3: Hi-hat noise (filtered noise, rhythmic) ---
+    const noiseLen = ctx.sampleRate * 4; // 4 seconds of noise
+    const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) {
+        noiseData[i] = Math.random() * 2 - 1;
     }
-    if (ctx && bgmGain) {
-        // Route through Web Audio for smooth fade.
-        // If the audio element is already playing, just fade in.
-        if (!bgmElement._connected && bgmElement.readyState >= 2) {
-            try {
-                const src = ctx.createMediaElementSource(bgmElement);
-                src.connect(bgmGain);
-                bgmElement._connected = true;
-            } catch (e) { /* already connected */ }
-        }
-        bgmElement.play().catch(() => {});
-        fadeBgm(0.3);
-    } else {
-        // Fallback: use element volume directly (no Web Audio).
-        bgmElement.volume = 0.3;
-        bgmElement.play().catch(() => {});
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
+    noiseSrc.loop = true;
+    const noiseHP = ctx.createBiquadFilter();
+    noiseHP.type = 'highpass';
+    noiseHP.frequency.value = 7000;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.04;
+    const noiseLfo = ctx.createOscillator();
+    noiseLfo.type = 'square';
+    noiseLfo.frequency.value = 130 / 60 * 2; // 8th notes at 130 BPM
+    const noiseLfoGain = ctx.createGain();
+    noiseLfoGain.gain.value = 0.04;
+    noiseLfo.connect(noiseLfoGain);
+    noiseLfoGain.connect(noiseGain.gain);
+    noiseSrc.connect(noiseHP);
+    noiseHP.connect(noiseGain);
+    noiseGain.connect(bgmGain);
+    noiseSrc.start(now);
+    noiseLfo.start(now);
+    bgmNodes.push(noiseSrc, noiseHP, noiseGain, noiseLfo, noiseLfoGain);
+
+    // --- Layer 4: Arpeggio melody (sawtooth, cycling notes) ---
+    const arpNotes = [220, 277.18, 329.63, 440, 329.63, 277.18]; // Am arpeggio
+    let arpIndex = 0;
+    const arpGain = ctx.createGain();
+    arpGain.gain.value = 0.06;
+    const arpFilter = ctx.createBiquadFilter();
+    arpFilter.type = 'lowpass';
+    arpFilter.frequency.value = 2000;
+    arpGain.connect(arpFilter);
+    arpFilter.connect(bgmGain);
+
+    function playArpNote() {
+        if (!bgmEnabled || !ctx) return;
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = arpNotes[arpIndex % arpNotes.length];
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0, ctx.currentTime);
+        env.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.02);
+        env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+        osc.connect(env);
+        env.connect(arpGain);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+        arpIndex++;
     }
+
+    // Play arpeggio notes on a timer (16th notes at 130 BPM ≈ 115ms).
+    bgmInterval = setInterval(playArpNote, 115);
+    playArpNote(); // start immediately
 }
 
-function fadeBgm(target) {
-    if (!bgmElement) return;
-    if (ctx && bgmGain) {
+function stopBgm() {
+    // Fade out then disconnect.
+    if (ctx && bgmNodes.length) {
         const now = ctx.currentTime;
-        bgmGain.gain.cancelScheduledValues(now);
-        bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
-        bgmGain.gain.linearRampToValueAtTime(target, now + 0.8);
-        if (target === 0) {
-            bgmElement.pause();
+        for (const node of bgmNodes) {
+            try {
+                if (node.stop) node.stop(now + 0.5);
+                if (node.disconnect) {
+                    setTimeout(() => { try { node.disconnect(); } catch(e) {} }, 600);
+                }
+            } catch (e) { /* already stopped */ }
         }
-    } else {
-        bgmElement.volume = target;
-        if (target === 0) bgmElement.pause();
+    }
+    bgmNodes = [];
+    if (bgmInterval) {
+        clearInterval(bgmInterval);
+        bgmInterval = null;
     }
 }
 

@@ -6,7 +6,8 @@
     <link rel="icon" href="data:,">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Barlow:wght@400;600;700&display=swap"></noscript>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Barlow', 'Courier New', sans-serif; }
 
@@ -240,7 +241,7 @@
             void main() {
                 vColor = aColor;
                 vec4 mv = modelViewMatrix * vec4(position, 1.0);
-                gl_PointSize = max(2.0, size * (320.0 / -mv.z));
+                gl_PointSize = min(64.0, max(2.0, size * (320.0 / -mv.z)));
                 gl_Position = projectionMatrix * mv;
             }
         `,
@@ -326,7 +327,7 @@
             return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 0.85, g: 0.65, b: 1.0, s: 3.2 };
         } else {
             const angle = Math.random() * 6.28; const rad = 5 + Math.random() * 5;
-            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.18, g: 0.0, b: 0.3, s: 1.8 };
+            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.3, g: 0.05, b: 0.45, s: 2.2 };
         }
     }
 
@@ -335,9 +336,9 @@
         const t = i / COUNT;
         const angle = Math.random() * 6.28;
         const rad = Math.random() * 9 * (1 - t * 0.25);
-        const z = 12 + Math.random() * 42;
+        const z = -5 + Math.random() * 20;
         const flicker = 0.4 + Math.random() * 0.5;
-        return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: z, r: flicker, g: 0.85, b: 1.0, s: 1.2 + Math.random() };
+        return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: z, r: flicker, g: 0.85, b: 1.0, s: 1.5 + Math.random() * 1.5 };
     }
 
     // Converging golden spirals for Fusion.

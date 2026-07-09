@@ -35,7 +35,7 @@
             font-family: 'Noto Serif JP', serif;
             font-size: 2.2rem; margin-top: 10px; letter-spacing: 8px;
             font-weight: 900; color: #00ffff;
-            text-shadow: 0 0 18px currentColor;
+            text-shadow: 0 0 24px #000, 0 0 12px #000, 0 0 8px currentColor;
             transition: color 0.4s ease, text-shadow 0.4s ease;
         }
 
@@ -44,7 +44,7 @@
             font-size: 1.5rem; color: #00ffff; margin-top: 8px;
             font-weight: 900; letter-spacing: 5px;
             text-transform: uppercase;
-            text-shadow: 0 0 14px currentColor;
+            text-shadow: 0 0 24px #000, 0 0 12px #000, 0 0 8px currentColor;
             transition: color 0.4s ease, text-shadow 0.4s ease;
         }
 
@@ -322,23 +322,27 @@
     }
 
     function getBlackFlash(i) {
-        if (i < COUNT * 0.06) {
-            const r = Math.random() * 5; const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
-            return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 0.85, g: 0.65, b: 1.0, s: 3.2 };
+        if (i < COUNT * 0.08) {
+            const r = Math.random() * 3; const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
+            return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 1.0, g: 0.85, b: 1.0, s: 3.8 };
+        } else if (i < COUNT * 0.35) {
+            const angle = Math.random() * 6.28; const rad = 4 + Math.random() * 5;
+            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 3, r: 0.55, g: 0.05, b: 0.85, s: 2.8 };
         } else {
-            const angle = Math.random() * 6.28; const rad = 5 + Math.random() * 5;
-            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.3, g: 0.05, b: 0.45, s: 2.2 };
+            const angle = Math.random() * 6.28; const rad = 9 + Math.random() * 14;
+            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 6, r: 0.15, g: 0.0, b: 0.3, s: 2.0 };
         }
     }
 
-    // Forward energy column (toward the camera) for Kamehameha.
+    // Kamehameha: a spiraling power beam shooting out.
     function getKamehameha(i) {
         const t = i / COUNT;
-        const angle = Math.random() * 6.28;
-        const rad = Math.random() * 9 * (1 - t * 0.25);
-        const z = -5 + Math.random() * 20;
-        const flicker = 0.4 + Math.random() * 0.5;
-        return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: z, r: flicker, g: 0.85, b: 1.0, s: 1.5 + Math.random() * 1.5 };
+        const angle = t * 50 + (i % 8) * (Math.PI / 4);
+        const rad = t * 12 + Math.sin(t * 30) * 2;
+        const z = -45 + t * 60;
+        const flicker = 0.6 + Math.random() * 0.4;
+        const blue = 0.8 + Math.random() * 0.2;
+        return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: z, r: flicker, g: flicker * 0.8, b: blue, s: 1.8 + Math.random() * 2.0 };
     }
 
     // Converging golden spirals for Fusion.
@@ -542,7 +546,8 @@
         } else if (currentTech === 'void') {
             particles.rotation.y += 0.02;
         } else if (currentTech === 'kamehameha') {
-            particles.rotation.y += 0.05;
+            particles.rotation.z += 0.15;
+            particles.rotation.y += 0.08;
         } else if (currentTech === 'fusion') {
             particles.rotation.z += 0.25;
         } else if (currentTech === 'cursed_speech') {

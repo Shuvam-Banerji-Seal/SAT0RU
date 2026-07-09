@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>JJK: Cursed Technique</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Rajdhani', 'Courier New', sans-serif; }
     
         #ui {
             position: absolute;
-            top: 10%;
+            top: 8%;
             width: 100%;
             text-align: center;
             color: #fff;
@@ -17,19 +20,38 @@
         }
         
         h1 { 
-            font-size: 3rem; margin: 0; letter-spacing: 10px; 
+            font-family: 'Noto Serif JP', serif;
+            font-size: 3.4rem; margin: 0; letter-spacing: 12px; 
             font-weight: 900; 
-            text-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
-            background: linear-gradient(to bottom, #fff, #888);
+            text-shadow: 0 0 24px rgba(255, 255, 255, 0.35);
+            background: linear-gradient(to bottom, #ffffff, #7a7a7a);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         
+        #technique-jp {
+            font-family: 'Noto Serif JP', serif;
+            font-size: 2.2rem; margin-top: 10px; letter-spacing: 8px;
+            font-weight: 900; color: #00ffff;
+            text-shadow: 0 0 18px currentColor;
+            transition: color 0.4s ease, text-shadow 0.4s ease;
+        }
+        
         #technique-name { 
-            font-size: 1.2rem; color: #00ffff; margin-top: 15px; 
-            font-weight: bold; letter-spacing: 4px;
+            font-family: 'Cinzel', serif;
+            font-size: 1.5rem; color: #00ffff; margin-top: 8px; 
+            font-weight: 900; letter-spacing: 5px;
             text-transform: uppercase;
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            text-shadow: 0 0 14px currentColor;
+            transition: color 0.4s ease, text-shadow 0.4s ease;
+        }
+        
+        #technique-sub {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 6px;
+            letter-spacing: 2px; font-weight: 500;
+            font-style: italic;
+            transition: opacity 0.4s ease;
         }
 
         /* Large Centered Camera Hub - Taller for Reel Context */
@@ -57,6 +79,12 @@
             pointer-events: none; z-index: 5;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
         }
+
+        #vignette {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 4;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.75) 100%);
+        }
     </style>
     
     <script type="importmap">
@@ -74,10 +102,13 @@
 <body>
 
     <div id="grain"></div>
+    <div id="vignette"></div>
 
     <div id="ui">
         <h1>呪術廻戦</h1>
+        <div id="technique-jp">呪力</div>
         <div id="technique-name">CURSED ENERGY</div>
+        <div id="technique-sub">Raise a hand to channel your technique</div>
     </div>
 
     <div id="video-container">
@@ -166,7 +197,31 @@
             const t = Math.random() * Math.PI * 2; const rad = Math.random() * 30;
             const curve = Math.pow(rad/30, 2) * 10; 
             return { x: rad*Math.cos(t), y: 15 - curve + (Math.random()*2), z: rad*Math.sin(t)*0.6, r: 0.6, g: 0, b: 0, s: 0.6 };
-        } else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
+        }         else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
+    }
+
+    function getBlue(i) {
+        const t = i / COUNT;
+        if (i < COUNT * 0.2) {
+            const r = 2 + Math.random() * 18;
+            const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
+            return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 0.25, g: 0.5, b: 1.0, s: 1.6 };
+        } else {
+            const angle = t * 22 + (i % 4) * (Math.PI / 2);
+            const radius = 6 + t * 34;
+            const swirl = 1 + Math.sin(t * 12) * 0.25;
+            return { x: radius * Math.cos(angle) * swirl, y: radius * Math.sin(angle) * swirl, z: (Math.random() - 0.5) * 8, r: 0.1, g: 0.35, b: 0.95, s: 0.9 };
+        }
+    }
+
+    function getBlackFlash(i) {
+        if (i < COUNT * 0.06) {
+            const r = Math.random() * 5; const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
+            return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 0.85, g: 0.65, b: 1.0, s: 3.2 };
+        } else {
+            const angle = Math.random() * 6.28; const rad = 5 + Math.random() * 5;
+            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.18, g: 0.0, b: 0.3, s: 0.8 };
+        }
     }
 
     // --- Technique state (driven by the CV module) ---
@@ -174,31 +229,67 @@
     let shakeIntensity = 0;
     let glowColor = '#00ffff';
 
+    const TECH_INFO = {
+        neutral:    { name: 'Neutral State',                  jp: '呪力',     sub: 'Raise a hand to channel your technique',            bloom: 1.0 },
+        red:        { name: 'Cursed Technique Reversal: Red',  jp: '赫',       sub: 'A blast of repulsive force',                        bloom: 2.5 },
+        blue:       { name: 'Cursed Technique: Blue',          jp: '蒼',       sub: 'Gravity drawn to a single point',                  bloom: 2.2 },
+        void:       { name: 'Domain Expansion: Infinite Void', jp: '無量空処', sub: 'All knowledge, frozen in time',                    bloom: 2.0 },
+        purple:     { name: 'Secret Technique: Hollow Purple', jp: '虚式「茈」', sub: 'The fusion of red and blue',                      bloom: 4.0 },
+        shrine:     { name: 'Domain Expansion: Malevolent Shrine', jp: '伏魔御廚子', sub: 'A boundless kitchen of slaughters',            bloom: 2.5 },
+        blackflash: { name: 'Black Flash',                     jp: '黒閃',     sub: 'A distortion of space and time',                    bloom: 3.6 },
+    };
+
+    // --- Shockwave ring (triggered on every technique activation) ---
+    const shockGeo = new THREE.RingGeometry(0.92, 1.0, 96);
+    const shockMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const shockwave = new THREE.Mesh(shockGeo, shockMat);
+    scene.add(shockwave);
+    let shockTime = -1;
+
+    function triggerShockwave(color) {
+        shockwave.material.color.set(color);
+        shockwave.material.opacity = 0.9;
+        shockwave.scale.set(1, 1, 1);
+        shockTime = 0;
+    }
+
     function updateState(tech, glow) {
-        if(currentTech === tech) return;
+        if (currentTech === tech) return;
         currentTech = tech;
         glowColor = glow;
+
+        const info = TECH_INFO[tech] ?? TECH_INFO.neutral;
         const nameEl = document.getElementById('technique-name');
-        shakeIntensity = tech !== 'neutral' ? 0.4 : 0;
+        const jpEl = document.getElementById('technique-jp');
+        const subEl = document.getElementById('technique-sub');
 
-        if(tech === 'shrine') { nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; }
-        else if(tech === 'purple') { nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; }
-        else if(tech === 'void') { nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; }
-        else if(tech === 'red') { nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; }
-        else { nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; }
+        nameEl.innerText = info.name;
+        nameEl.style.color = glow;
+        jpEl.innerText = info.jp;
+        jpEl.style.color = glow;
+        subEl.innerText = info.sub;
 
-        for(let i=0; i<COUNT; i++) {
+        shakeIntensity = tech !== 'neutral' ? (tech === 'blackflash' ? 0.9 : 0.4) : 0;
+        bloomPass.strength = info.bloom;
+        triggerShockwave(glow);
+
+        for (let i = 0; i < COUNT; i++) {
             let p;
-            if(tech === 'neutral') {
-                if(i < COUNT * 0.05) {
+            if (tech === 'neutral') {
+                if (i < COUNT * 0.05) {
                     const r = 15 + Math.random()*20; const t = Math.random()*6.28; const ph = Math.random()*3.14;
                     p = { x: r*Math.sin(ph)*Math.cos(t), y: r*Math.sin(ph)*Math.sin(t), z: r*Math.cos(ph), r: 0.1, g: 0.1, b: 0.2, s: 0.4 };
                 } else p = { x:0, y:0, z:0, r:0, g:0, b:0, s:0 };
             }
-            else if(tech === 'red') p = getRed(i);
-            else if(tech === 'void') p = getVoid(i);
-            else if(tech === 'purple') p = getPurple(i);
-            else if(tech === 'shrine') p = getShrine(i);
+            else if (tech === 'red') p = getRed(i);
+            else if (tech === 'blue') p = getBlue(i);
+            else if (tech === 'void') p = getVoid(i);
+            else if (tech === 'purple') p = getPurple(i);
+            else if (tech === 'shrine') p = getShrine(i);
+            else if (tech === 'blackflash') p = getBlackFlash(i);
 
             targetPositions[i*3] = p.x; targetPositions[i*3+1] = p.y; targetPositions[i*3+2] = p.z;
             targetColors[i*3] = p.r; targetColors[i*3+1] = p.g; targetColors[i*3+2] = p.b;
@@ -210,40 +301,58 @@
     setupCV(updateState);
 
     // Animation
+    const clock = new THREE.Clock();
+
     function animate() {
         requestAnimationFrame(animate);
-        
+        const dt = Math.min(clock.getDelta(), 0.05);
+
         if (shakeIntensity > 0) {
             renderer.domElement.style.transform = `translate(${(Math.random()-0.5)*shakeIntensity*40}px, ${(Math.random()-0.5)*shakeIntensity*40}px)`;
         } else {
             renderer.domElement.style.transform = 'translate(0,0)';
         }
 
+        // Shockwave expansion
+        if (shockTime >= 0) {
+            shockTime += dt;
+            const s = 1 + shockTime * 55;
+            shockwave.scale.set(s, s, s);
+            shockwave.material.opacity = Math.max(0, 0.9 - shockTime * 1.1);
+            if (shockwave.material.opacity <= 0) shockTime = -1;
+        }
+
         const pos = particles.geometry.attributes.position.array;
         const col = particles.geometry.attributes.color.array;
         const siz = particles.geometry.attributes.size.array;
 
-        for(let i=0; i<COUNT*3; i++) {
-            pos[i] += (targetPositions[i] - pos[i]) * 0.1;
-            col[i] += (targetColors[i] - col[i]) * 0.1;
+        // Framerate-independent easing (≈0.1 per frame at 60fps).
+        const ease = 1 - Math.pow(0.0001, dt);
+        for (let i = 0; i < COUNT*3; i++) {
+            pos[i] += (targetPositions[i] - pos[i]) * ease;
+            col[i] += (targetColors[i] - col[i]) * ease;
         }
-        for(let i=0; i<COUNT; i++) siz[i] += (targetSizes[i] - siz[i]) * 0.1;
+        for (let i = 0; i < COUNT; i++) siz[i] += (targetSizes[i] - siz[i]) * ease;
 
         particles.geometry.attributes.position.needsUpdate = true;
         particles.geometry.attributes.color.needsUpdate = true;
         particles.geometry.attributes.size.needsUpdate = true;
-        
-        // UPDATED ROTATION LOGIC: Locking rotation for Shrine
-        if(currentTech === 'red') {
+
+        if (currentTech === 'red') {
             particles.rotation.z -= 0.1;
+        } else if (currentTech === 'blue') {
+            particles.rotation.y += 0.08;
+            particles.rotation.z += 0.03;
         } else if (currentTech === 'purple') {
-            particles.rotation.z += 0.2; 
+            particles.rotation.z += 0.2;
             particles.rotation.y += 0.05;
+        } else if (currentTech === 'blackflash') {
+            particles.rotation.z += 0.3;
+        } else if (currentTech === 'void') {
+            particles.rotation.y += 0.02;
         } else if (currentTech === 'shrine') {
-            // FORCE UPRIGHT: Reset and freeze all rotations
-            particles.rotation.set(0, 0, 0); 
+            particles.rotation.set(0, 0, 0);
         } else {
-            // Default Neutral rotation
             particles.rotation.y += 0.005;
         }
 

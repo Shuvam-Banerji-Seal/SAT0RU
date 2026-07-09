@@ -3,12 +3,16 @@
 // ----------------------------------------------------------------------------
 // Encapsulates the MediaPipe pipelines:
 //   * Hands   -> single-hand techniques + two-hand composite techniques
-//   * FaceMesh (optional) -> "Cursed Speech" when the mouth is open
+//   * FaceLandmarker (tasks-vision, optional) -> "Cursed Speech" on open mouth
 //
-// It owns the webcam feed, classifies poses into techniques, and reports:
-//   - onTechnique(technique, glow) : fired when the detected technique changes
-//   - onMetrics({ hands, distance }) : fired every frame (hand count + normalized
-//     distance between the two hands, used by the renderer for "screen" effects)
+// The hands model uses the classic @mediapipe/hands solution. The face model
+// uses the modern @mediapipe/tasks-vision package, which is fully isolated
+// (ESM, own wasm fileset) so it can NEVER collide with the hands globals and
+// can never break the hand-tracking pipeline.
+//
+// Reports:
+//   - onTechnique(technique, glow)        : fired when the technique changes
+//   - onMetrics({ hands, distance })      : fired every frame
 // ============================================================================
 
 const TECH_GLOW = {
@@ -77,13 +81,53 @@ function classifyTwoHands(a, b, dist) {
     return best;
 }
 
+// --- Face detection (tasks-vision FaceLandmarker), fully isolated ---
+let faceLandmarker = null;
+let faceOpen = false;
+
+async function initFaceLandmarker() {
+    try {
+        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs');
+        const { FaceLandmarker, FilesetResolver } = vision;
+        const fileset = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
+        );
+        faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+            baseOptions: {
+                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+                delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numFaces: 1,
+        });
+    } catch (e) {
+        console.warn('[SAT0RU] FaceLandmarker unavailable, face gestures disabled.', e);
+        faceLandmarker = null;
+    }
+}
+
+function detectFace(video) {
+    if (!faceLandmarker || !video.videoWidth) return;
+    try {
+        const res = faceLandmarker.detectForVideo(video, performance.now());
+        if (res.faceLandmarks && res.faceLandmarks.length) {
+            const lm = res.faceLandmarks[0];
+            const d = Math.hypot(lm[13].x - lm[14].x, lm[13].y - lm[14].y);
+            faceOpen = d > 0.05;
+        } else {
+            faceOpen = false;
+        }
+    } catch (e) {
+        /* transient detection error, ignore */
+    }
+}
+
 export function setupCV({ onTechnique, onMetrics } = {}) {
     const videoElement = document.querySelector('.input_video');
     const canvasElement = document.getElementById('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
 
     let currentTech = 'neutral';
-    let faceOpen = false;
 
     const hands = new Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
@@ -124,44 +168,15 @@ export function setupCV({ onTechnique, onMetrics } = {}) {
         onMetrics && onMetrics({ hands: lms.length, distance });
     });
 
-    // --- Optional FaceMesh (Cursed Speech) ---
-    if (typeof FaceMesh !== 'undefined') {
-        const faceMesh = new FaceMesh({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-        });
-        faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.7 });
-        faceMesh.onResults((res) => {
-            if (res.multiFaceLandmarks && res.multiFaceLandmarks.length) {
-                const lm = res.multiFaceLandmarks[0];
-                const d = Math.hypot(lm[13].x - lm[14].x, lm[13].y - lm[14].y);
-                faceOpen = d > 0.05;
-            } else {
-                faceOpen = false;
-            }
-        });
+    // Start face detection in the background (does not block hands).
+    initFaceLandmarker();
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                await Promise.all([
-                    hands.send({ image: videoElement }),
-                    faceMesh.send({ image: videoElement }),
-                ]);
-            },
-            width: 640,
-            height: 480,
-        });
-        camera.start();
-        return;
-    }
-
-    // --- Hands only ---
     const camera = new Camera(videoElement, {
         onFrame: async () => {
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
             await hands.send({ image: videoElement });
+            detectFace(videoElement);
         },
         width: 640,
         height: 480,

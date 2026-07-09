@@ -93,14 +93,25 @@ function classifyHand(lm) {
 function classifyTwoHands(a, b, dist) {
     const ca = classifyHand(a);
     const cb = classifyHand(b);
-    const close = dist < 0.32;
+    const openHands = ca === 'shrine' && cb === 'shrine';
+    const fists     = ca === 'blackflash' && cb === 'blackflash';
+    const pinches   = ca === 'purple' && cb === 'purple';
 
-    const openHands  = ca === 'shrine'     && cb === 'shrine';
-    const fists      = ca === 'blackflash' && cb === 'blackflash';
-    const pinches    = ca === 'purple'     && cb === 'purple';
+    // Kamehameha: both palms pressed together with opposite fingers.
+    // Check wrist proximity (lm[0]) AND fingertip proximity (lm[8,12,16,20]).
+    if (openHands) {
+        const wristDist = Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y);
+        const tipIds = [8, 12, 16, 20];
+        let tipAvg = 0;
+        for (const id of tipIds) {
+            tipAvg += Math.hypot(a[id].x - b[id].x, a[id].y - b[id].y);
+        }
+        tipAvg /= tipIds.length;
+        if (wristDist < 0.15 && tipAvg < 0.15) return 'kamehameha';
+    }
 
-    if (close && openHands) return 'kamehameha'; // two open palms together
-    if (close && (fists || pinches)) return 'fusion'; // fists/pinches together
+    // Fusion: both fists or both pinches close together.
+    if (dist < 0.32 && (fists || pinches)) return 'fusion';
 
     let best = 'neutral';
     [ca, cb].forEach((t) => {

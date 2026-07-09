@@ -6,9 +6,9 @@
     <link rel="icon" href="data:,">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;900&family=Noto+Serif+JP:wght@600;900&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Rajdhani', 'Courier New', sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Barlow', 'Courier New', sans-serif; }
 
         #ui {
             position: absolute;
@@ -48,7 +48,7 @@
         }
 
         #technique-sub {
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Barlow', sans-serif;
             font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 6px;
             letter-spacing: 2px; font-weight: 500;
             font-style: italic;
@@ -88,7 +88,7 @@
 
         #sound-toggle {
             position: fixed; bottom: 18px; right: 18px; z-index: 30;
-            font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: 2px;
+            font-family: 'Barlow', sans-serif; font-weight: 700; letter-spacing: 2px;
             color: #fff; background: rgba(0,0,0,0.5);
             border: 1px solid rgba(255,255,255,0.3); border-radius: 12px;
             padding: 10px 16px; cursor: pointer; font-size: 0.9rem;
@@ -174,7 +174,7 @@
             void main() {
                 vColor = aColor;
                 vec4 mv = modelViewMatrix * vec4(position, 1.0);
-                gl_PointSize = size * (320.0 / -mv.z);
+                gl_PointSize = max(2.0, size * (320.0 / -mv.z));
                 gl_Position = projectionMatrix * mv;
             }
         `,
@@ -260,7 +260,7 @@
             return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi), r: 0.85, g: 0.65, b: 1.0, s: 3.2 };
         } else {
             const angle = Math.random() * 6.28; const rad = 5 + Math.random() * 5;
-            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.18, g: 0.0, b: 0.3, s: 0.8 };
+            return { x: rad * Math.cos(angle), y: rad * Math.sin(angle), z: (Math.random() - 0.5) * 4, r: 0.18, g: 0.0, b: 0.3, s: 1.8 };
         }
     }
 

@@ -1,19 +1,21 @@
 // ============================================================================
 // SAT0RU - Computer Vision module
 // ----------------------------------------------------------------------------
-// Encapsulates the MediaPipe pipelines:
-//   * Hands   -> single-hand techniques + two-hand composite techniques
-//   * FaceLandmarker (tasks-vision, optional) -> "Cursed Speech" on open mouth
+// Built entirely on @mediapipe/tasks-vision (a single, self-contained wasm
+// fileset) so the Hands and Face models NEVER collide on a shared global
+// Emscripten `Module` the way the legacy @mediapipe/* script packages do.
 //
-// The hands model uses the classic @mediapipe/hands solution. The face model
-// uses the modern @mediapipe/tasks-vision package, which is fully isolated
-// (ESM, own wasm fileset) so it can NEVER collide with the hands globals and
-// can never break the hand-tracking pipeline.
+//   * HandLandmarker -> single-hand + two-hand composite techniques
+//   * FaceLandmarker -> "Cursed Speech" on open mouth (optional)
 //
 // Reports:
-//   - onTechnique(technique, glow)        : fired when the technique changes
-//   - onMetrics({ hands, distance })      : fired every frame
+//   - onTechnique(technique, glow)    : fired when the detected technique changes
+//   - onMetrics({ hands, distance })  : fired every frame
 // ============================================================================
+
+const TASKS_VISION = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12';
+const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
 const TECH_GLOW = {
     neutral:        '#00ffff',
@@ -38,6 +40,33 @@ let glowColor = TECH_GLOW.neutral;
 
 export function getGlowColor() {
     return glowColor;
+}
+
+// Standard MediaPipe hand skeleton connection pairs.
+const HAND_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [5, 9], [9, 10], [10, 11], [11, 12],
+    [9, 13], [13, 14], [14, 15], [15, 16],
+    [13, 17], [17, 18], [18, 19], [19, 20],
+    [0, 17],
+];
+
+function drawHand(ctx, lm, w, h, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    for (const [a, b] of HAND_CONNECTIONS) {
+        ctx.beginPath();
+        ctx.moveTo(lm[a].x * w, lm[a].y * h);
+        ctx.lineTo(lm[b].x * w, lm[b].y * h);
+        ctx.stroke();
+    }
+    ctx.fillStyle = '#fff';
+    for (const p of lm) {
+        ctx.beginPath();
+        ctx.arc(p.x * w, p.y * h, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 // Classify a single hand's landmarks into one technique.
@@ -73,7 +102,6 @@ function classifyTwoHands(a, b, dist) {
     if (close && openHands) return 'kamehameha'; // two open palms together
     if (close && (fists || pinches)) return 'fusion'; // fists/pinches together
 
-    // No special composite -> strongest single-hand pose wins.
     let best = 'neutral';
     [ca, cb].forEach((t) => {
         if (TECH_PRIORITY.indexOf(t) > TECH_PRIORITY.indexOf(best)) best = t;
@@ -81,83 +109,114 @@ function classifyTwoHands(a, b, dist) {
     return best;
 }
 
-// --- Face detection (tasks-vision FaceLandmarker), fully isolated ---
-let faceLandmarker = null;
-let faceOpen = false;
-
-async function initFaceLandmarker() {
+// Create a landmarker, trying GPU then falling back to CPU.
+async function createLandmarker(fileset, Cls, extra) {
+    const withDelegate = (delegate) => ({ ...extra, baseOptions: { ...extra.baseOptions, delegate } });
     try {
-        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs');
-        const { FaceLandmarker, FilesetResolver } = vision;
-        const fileset = await FilesetResolver.forVisionTasks(
-            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
-        );
-        faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
-            baseOptions: {
-                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-                delegate: 'GPU',
-            },
+        return await Cls.createFromOptions(fileset, withDelegate('GPU'));
+    } catch (e) {
+        return await Cls.createFromOptions(fileset, withDelegate('CPU'));
+    }
+}
+
+export async function setupCV({ onTechnique, onMetrics } = {}) {
+    const videoElement = document.querySelector('.input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    // Load the single tasks-vision bundle (one wasm fileset for everything).
+    let vision, fileset;
+    try {
+        vision = await import(`${TASKS_VISION}/vision_bundle.mjs`);
+        fileset = await vision.FilesetResolver.forVisionTasks(`${TASKS_VISION}/wasm`);
+    } catch (e) {
+        console.error('[SAT0RU] Failed to load MediaPipe tasks-vision.', e);
+        return;
+    }
+    const { HandLandmarker, FaceLandmarker } = vision;
+
+    let handLandmarker;
+    try {
+        handLandmarker = await createLandmarker(fileset, HandLandmarker, {
+            baseOptions: { modelAssetPath: HAND_MODEL },
+            runningMode: 'VIDEO',
+            numHands: 2,
+        });
+    } catch (e) {
+        console.error('[SAT0RU] HandLandmarker failed to initialize.', e);
+        return;
+    }
+
+    let faceLandmarker = null;
+    try {
+        faceLandmarker = await createLandmarker(fileset, FaceLandmarker, {
+            baseOptions: { modelAssetPath: FACE_MODEL },
             runningMode: 'VIDEO',
             numFaces: 1,
         });
     } catch (e) {
         console.warn('[SAT0RU] FaceLandmarker unavailable, face gestures disabled.', e);
-        faceLandmarker = null;
     }
-}
 
-function detectFace(video) {
-    if (!faceLandmarker || !video.videoWidth) return;
+    // Webcam
     try {
-        const res = faceLandmarker.detectForVideo(video, performance.now());
-        if (res.faceLandmarks && res.faceLandmarks.length) {
-            const lm = res.faceLandmarks[0];
-            const d = Math.hypot(lm[13].x - lm[14].x, lm[13].y - lm[14].y);
-            faceOpen = d > 0.05;
-        } else {
-            faceOpen = false;
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 }, audio: false,
+        });
+        videoElement.srcObject = stream;
+        await videoElement.play();
     } catch (e) {
-        /* transient detection error, ignore */
+        console.error('[SAT0RU] Camera access denied.', e);
+        return;
     }
-}
-
-export function setupCV({ onTechnique, onMetrics } = {}) {
-    const videoElement = document.querySelector('.input_video');
-    const canvasElement = document.getElementById('output_canvas');
-    const canvasCtx = canvasElement.getContext('2d');
 
     let currentTech = 'neutral';
+    let faceOpen = false;
 
-    const hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7 });
+    function process() {
+        requestAnimationFrame(process);
+        if (videoElement.readyState < 2) return;
 
-    hands.onResults((results) => {
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        const w = videoElement.videoWidth;
+        const h = videoElement.videoHeight;
+        canvasElement.width = w;
+        canvasElement.height = h;
+        canvasCtx.clearRect(0, 0, w, h);
 
-        const lms = results.multiHandLandmarks || [];
+        const ts = performance.now();
         let detected = 'neutral';
         let distance = 0;
+        let handCount = 0;
 
-        if (lms.length) {
-            lms.forEach((lm) => {
-                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, { color: glowColor, lineWidth: 5 });
-                drawLandmarks(canvasCtx, lm, { color: '#fff', lineWidth: 1, radius: 2 });
-            });
-
-            if (lms.length === 2) {
-                const c0 = lms[0][9];
-                const c1 = lms[1][9];
-                distance = Math.hypot(c0.x - c1.x, c0.y - c1.y);
-                detected = classifyTwoHands(lms[0], lms[1], distance);
-            } else {
-                detected = classifyHand(lms[0]);
+        try {
+            const hres = handLandmarker.detectForVideo(videoElement, ts);
+            const lms = hres.landmarks || [];
+            handCount = lms.length;
+            if (lms.length) {
+                lms.forEach((lm) => drawHand(canvasCtx, lm, w, h, glowColor));
+                if (lms.length === 2) {
+                    const c0 = lms[0][9];
+                    const c1 = lms[1][9];
+                    distance = Math.hypot(c0.x - c1.x, c0.y - c1.y);
+                    detected = classifyTwoHands(lms[0], lms[1], distance);
+                } else {
+                    detected = classifyHand(lms[0]);
+                }
             }
+        } catch (e) { /* transient hand error */ }
+
+        if (faceLandmarker) {
+            try {
+                const fres = faceLandmarker.detectForVideo(videoElement, ts);
+                if (fres.faceLandmarks && fres.faceLandmarks.length) {
+                    const fl = fres.faceLandmarks[0];
+                    faceOpen = Math.hypot(fl[13].x - fl[14].x, fl[13].y - fl[14].y) > 0.05;
+                } else {
+                    faceOpen = false;
+                }
+            } catch (e) { /* transient face error */ }
         }
 
-        // Face modality overrides when the mouth is clearly open.
         if (faceOpen && detected !== 'cursed_speech') detected = 'cursed_speech';
 
         if (detected !== currentTech) {
@@ -165,21 +224,8 @@ export function setupCV({ onTechnique, onMetrics } = {}) {
             glowColor = TECH_GLOW[detected] ?? TECH_GLOW.neutral;
             onTechnique && onTechnique(detected, glowColor);
         }
-        onMetrics && onMetrics({ hands: lms.length, distance });
-    });
+        onMetrics && onMetrics({ hands: handCount, distance });
+    }
 
-    // Start face detection in the background (does not block hands).
-    initFaceLandmarker();
-
-    const camera = new Camera(videoElement, {
-        onFrame: async () => {
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
-            await hands.send({ image: videoElement });
-            detectFace(videoElement);
-        },
-        width: 640,
-        height: 480,
-    });
-    camera.start();
+    process();
 }

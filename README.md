@@ -16,7 +16,7 @@ This iteration expands the original visualizer into a richer, multi-modal experi
   - **Kamehameha (波)** — both palms open and brought together.
   - **Fusion / Convergence (合)** — both fists (or both pinches) brought together.
   - **Distance-driven "screen" effects** — the separation between your two hands modulates bloom intensity, camera push-in, and screen shake in real time (hands apart = bigger, more violent effect).
-- **Face-driven technique** — optional **MediaPipe tasks-vision FaceLandmarker** detects an open mouth and triggers **Cursed Speech (呪言)**, a radiating violet incantation. It runs fully isolated from the hands model so it can never break hand tracking.
+- **Face-driven technique** — **MediaPipe tasks-vision FaceLandmarker** detects an open mouth and triggers **Cursed Speech (呪言)**, a radiating violet incantation. It shares the same wasm fileset as the hand model, so there is no global collision and face failures can never break hand tracking.
 - **Procedural audio + spoken incantations** — a local **Web Audio** engine synthesizes a cast sound per technique, and the **Web Speech API** speaks the technique name aloud. Sound is **off by default** and toggled with an on-screen button.
 - **Richer UI** — Japanese technique glyphs, color-synced titles, descriptive subtitles, custom fonts, a vignette, and a shockwave ring on every activation.
 - **Smoother animation** — framerate-independent easing and per-technique rotation/spin behavior.
@@ -53,7 +53,7 @@ This iteration expands the original visualizer into a richer, multi-modal experi
 ## How It Works
 
 ```
-webcam ──► MediaPipe (Hands + optional FaceMesh)
+webcam ──► MediaPipe tasks-vision (HandLandmarker + optional FaceLandmarker)
                │  classify poses → technique + glow + metrics
                ▼
             cv.js  ──(onTechnique / onMetrics)──►  index.html (three.js scene)
@@ -61,7 +61,7 @@ webcam ──► MediaPipe (Hands + optional FaceMesh)
                └── audio.js ◄── playCast() / speak() ───┘
 ```
 
-- **`cv.js`** — owns the camera feed and the MediaPipe pipelines. It classifies each hand into a technique, aggregates two hands into composite techniques, and (optionally) runs the isolated FaceLandmarker for mouth-open detection. It reports `onTechnique(tech, glow)` on changes and `onMetrics({hands, distance})` every frame.
+- **`cv.js`** — owns the camera feed and **all** MediaPipe inference, built on a single `@mediapipe/tasks-vision` bundle (one shared wasm fileset, so the hand and face models never collide). It runs `HandLandmarker` and `FaceLandmarker` each frame, classifies each hand into a technique, aggregates two hands into composite techniques, and (optionally) detects an open mouth. It reports `onTechnique(tech, glow)` on changes and `onMetrics({hands, distance})` every frame. Landmark drawing is done with the canvas 2D API (no legacy `drawing_utils`).
 - **`index.html`** — the three.js renderer. Particle generators (`getRed`, `getBlue`, `getVoid`, `getPurple`, `getShrine`, `getBlackFlash`, `getKamehameha`, `getFusion`, `getCursedSpeech`) feed target positions/colors/sizes; a custom shader draws them as glowing spheres; bloom + shockwave + camera effects respond to the active technique and hand metrics.
 - **`audio.js`** — a self-contained sound engine. No external audio files: cast sounds are synthesized with oscillators/noise, and incantations are spoken with the browser's speech synthesis. Everything is gated behind the **SOUND** toggle.
 

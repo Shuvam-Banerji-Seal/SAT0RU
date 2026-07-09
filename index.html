@@ -90,6 +90,7 @@
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { setupCV } from './cv.js';
 
     // --- Scene & Rendering ---
     const scene = new THREE.Scene();
@@ -168,49 +169,23 @@
         } else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
     }
 
-    // Hand Tracking
+    // --- Technique state (driven by the CV module) ---
     let currentTech = 'neutral';
     let shakeIntensity = 0;
-    const videoElement = document.querySelector('.input_video');
-    const canvasElement = document.getElementById('output_canvas');
-    const canvasCtx = canvasElement.getContext('2d');
     let glowColor = '#00ffff';
 
-    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7 });
-
-    hands.onResults((results) => {
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        let detected = 'neutral';
-
-        if (results.multiHandLandmarks) {
-            results.multiHandLandmarks.forEach((lm) => {
-                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: glowColor, lineWidth: 5});
-                drawLandmarks(canvasCtx, lm, {color: '#fff', lineWidth: 1, radius: 2});
-
-                const isUp = (t, p) => lm[t].y < lm[p].y;
-                const pinch = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y);
-                
-                if (pinch < 0.04) detected = 'purple';
-                else if (isUp(8,6) && isUp(12,10) && isUp(16,14) && isUp(20,18)) detected = 'shrine';
-                else if (isUp(8,6) && isUp(12,10) && !isUp(16,14)) detected = 'void';
-                else if (isUp(8,6) && !isUp(12,10)) detected = 'red';
-            });
-        }
-        updateState(detected);
-    });
-
-    function updateState(tech) {
+    function updateState(tech, glow) {
         if(currentTech === tech) return;
         currentTech = tech;
+        glowColor = glow;
         const nameEl = document.getElementById('technique-name');
         shakeIntensity = tech !== 'neutral' ? 0.4 : 0;
 
-        if(tech === 'shrine') { glowColor = '#ff0000'; nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; }
-        else if(tech === 'purple') { glowColor = '#bb00ff'; nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; }
-        else if(tech === 'void') { glowColor = '#00ffff'; nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; }
-        else if(tech === 'red') { glowColor = '#ff3333'; nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; }
-        else { glowColor = '#00ffff'; nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; }
+        if(tech === 'shrine') { nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; }
+        else if(tech === 'purple') { nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; }
+        else if(tech === 'void') { nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; }
+        else if(tech === 'red') { nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; }
+        else { nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; }
 
         for(let i=0; i<COUNT; i++) {
             let p;
@@ -224,21 +199,15 @@
             else if(tech === 'void') p = getVoid(i);
             else if(tech === 'purple') p = getPurple(i);
             else if(tech === 'shrine') p = getShrine(i);
-            
+
             targetPositions[i*3] = p.x; targetPositions[i*3+1] = p.y; targetPositions[i*3+2] = p.z;
             targetColors[i*3] = p.r; targetColors[i*3+1] = p.g; targetColors[i*3+2] = p.b;
             targetSizes[i] = p.s;
         }
     }
 
-    const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => {
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
-            await hands.send({image: videoElement});
-        }, width: 640, height: 480
-    });
-    cameraUtils.start();
+    // Start the computer-vision hand-tracking pipeline (see cv.js).
+    setupCV(updateState);
 
     // Animation
     function animate() {
